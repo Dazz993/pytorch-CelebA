@@ -9,10 +9,13 @@ import models
 import numpy as np
 from time import time as t
 from sklearn.metrics import f1_score
+from tqdm import tqdm
 
 parser = argparse.ArgumentParser(description='Pytorch CelebA Implementation')
 parser.add_argument('--cfg', default='', type=str, metavar='PATH',
                     help='path to configuration (default: none)')
+parser.add_argument('--gpu', default=0, type=int,
+                    help='the id of gpu to train')
 
 args = parser.parse_args()
 
@@ -21,22 +24,32 @@ with open(args.cfg, 'r') as configure_file:
     cfg_dict = yaml.load(configure_file, Loader=yaml.FullLoader)
 cfg = ObjectDict(cfg_dict)
 
-# model, optimizer and lr_scheduler
 cudnn.benchmark = True
-device = 'cuda' if torch.cuda.is_available() else 'cpu'
-model = models.resnet50(pretrained=False, num_classes=cfg.num_classes).to(device)
-optimizer = torch.optim.AdamW(model.parameters(), betas=(cfg.adam_beta1, cfg.adam_beta2), lr=cfg.learning_rate, weight_decay=cfg.weight_decay, eps=cfg.adam_eps)
-lr_scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer, milestones=cfg.milestones, gamma=cfg.gamma, last_epoch=cfg.epochs)
+device = f'cuda:{args.gpu}' if torch.cuda.is_available() else 'cpu'
+
+# load model
+if cfg.network == 'resnet':
+    model = models.resnet50(num_classes=cfg.num_classes)
+elif cfg.network == 'alexnet':
+    model = models.alexnet(num_classes=cfg.num_classes)
+elif cfg.network == 'vgg':
+    model = models.vgg16(num_classes=cfg.num_classes)
+else:
+    raise NotImplementedError
+
+model = model.to(device)
+optimizer = torch.optim.AdamW(model.parameters(), lr=cfg.learning_rate)
+lr_scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer=optimizer, milestones=cfg.milestones, gamma=cfg.gamma)
 
 # define criterion
-criterion = torch.nn.BCEWithLogitsLoss()
+criterion = torch.nn.BCEWithLogitsLoss().to(device)
 
 # dataset
 train_dataset, val_dataset, _ = get_dataset(name='CelebA', path=cfg.data_dir)
 train_dataloader = torch.utils.data.DataLoader(dataset=train_dataset, batch_size=cfg.batch_size, shuffle=True,
                                                num_workers=cfg.num_workers, pin_memory=True)
 val_dataloader = torch.utils.data.DataLoader(dataset=val_dataset, batch_size=cfg.batch_size, shuffle=False,
-                                             num_workers=cfg.num_worker, pin_memory=True)
+                                             num_workers=cfg.num_workers, pin_memory=True)
 
 def train_one_epoch(epoch):
     batch_time = AverageMeter()
@@ -55,7 +68,9 @@ def train_one_epoch(epoch):
 
         # model execution
         input = input.to(device)
+        target = target.to(device).float().requires_grad_()
         output = model(input)
+
         loss = criterion(output, target)
 
         # backpropagation
@@ -66,7 +81,7 @@ def train_one_epoch(epoch):
         # process output and other measurements
         loss = loss.float()
         output = output.detach().cpu().numpy()
-        target = target.numpy()
+        target = target.detach().cpu().numpy()
         cur_f1_micro, cur_f1_macro = score(y_pred=output, y_true=target, rounded=False)
         losses.update(loss, input.size(0))
         f1_micro.update(cur_f1_micro, input.size(0))
@@ -76,17 +91,17 @@ def train_one_epoch(epoch):
         batch_time.update(t() - end)
         end = t()
 
-        print(f'Epoch: [{epoch}]/[{cfg.epochs}]\t'
-              f'Batch: [{batch_idx}]/[{len(train_dataloader)}]\t'
-              f'Time {batch_time.val:.3f} ({batch_time.avg:.3f})\t'
-              f'Data Time {data_time.val:.3f} ({data_time.avg:.3f})\t'
-              f'Loss {loss.val:.3f}'
-              f'f1_score {f1_micro.val:.3f} {f1_macro.val:.3f}')
-
-    lr_scheduler.step()
+        print(f'Epoch: [{epoch}]/[{cfg.epochs}],\t'
+              f'Batch: [{batch_idx}]/[{len(train_dataloader)}],\t'
+              f'Time: {batch_time.val:.4f} ({batch_time.avg:.4f}),\t'
+            #   f'Data Time {data_time.val:.4f} ({data_time.avg:.4f})\t'
+              f'Loss: {losses.val:.4f} ({losses.avg:.4f}),\t'
+              f'f1_score_micro: {f1_micro.val:.4f} ({f1_micro.avg:.4f})\t'
+              f'f1_score_macro: {f1_macro.val:.4f} ({f1_macro.avg:.4f})')
 
     return losses.avg, f1_micro.avg, f1_macro.avg
 
+@torch.no_grad()
 def validate(epoch):
     batch_time = AverageMeter()
     data_time = AverageMeter()
@@ -98,19 +113,20 @@ def validate(epoch):
 
     end = t()
 
-    for batch_idx, (input, target) in enumerate(val_dataloader):
+    for batch_idx, (input, target) in tqdm(enumerate(val_dataloader), total=len(val_dataloader), desc=f' * Validating (epoch: {epoch})'):
         # process data loading time
         data_time.update(t() - end)
 
         # model execution
         input = input.to(device)
+        target = target.to(device).float()
         output = model(input)
         loss = criterion(output, target)
 
         # process output and other measurements
         loss = loss.float()
         output = output.detach().cpu().numpy()
-        target = target.numpy()
+        target = target.detach().cpu().numpy()
         cur_f1_micro, cur_f1_macro = score(y_pred=output, y_true=target, rounded=False)
         losses.update(loss, input.size(0))
         f1_micro.update(cur_f1_micro, input.size(0))
@@ -120,14 +136,14 @@ def validate(epoch):
         batch_time.update(t() - end)
         end = t()
 
-        print(f'Epoch: [{epoch}]/[{cfg.epochs}]\t'
-              f'Batch: [{batch_idx}]/[{len(train_dataloader)}]\t'
-              f'Time {batch_time.val:.3f} ({batch_time.avg:.3f})\t'
-              f'Data Time {data_time.val:.3f} ({data_time.avg:.3f})\t'
-              f'Loss {loss.val:.3f}'
-              f'f1_score {f1_micro.val:.3f} {f1_macro.val:.3f}')
+        # print(f'Epoch: [{epoch}]/[{cfg.epochs}]\t'
+        #       f'Batch: [{batch_idx}]/[{len(val_dataloader)}]\t'
+        #       f'Time {batch_time.val:.4f} ({batch_time.avg:.4f})\t'
+        #     #   f'Data Time {data_time.val:.4f} ({data_time.avg:.4f})\t'
+        #       f'Loss {losses.val:.4f} ({losses.avg:.4f})\t'
+        #       f'f1_score {f1_micro.val:.4f} {f1_macro.val:.4f}')
 
-    print(f'* Epoch: {epoch}, f1_score: {f1_micro.val:.3f} {f1_macro.val:.3f}')
+    print(f'\n * Epoch: {epoch}, f1_score: {f1_micro.val:.4f}, {f1_macro.val:.4f}')
 
     return losses.avg, f1_micro.avg, f1_macro.avg
 
@@ -136,6 +152,8 @@ def train():
     for epoch in range(cfg.epochs):
         train_loss, train_f1_micro, train_f1_macro = train_one_epoch(epoch)
         val_loss, val_f1_micro, val_f1_macro = validate(epoch)
+
+        lr_scheduler.step()
 
         if cfg.multigpu:
             save_dict = {
@@ -161,9 +179,9 @@ def train():
 
 def score(y_pred, y_true, rounded=False):
     if not rounded:
-        y_pred = np.round(y_pred)
-    f1_micro = f1_score(y_true, y_pred, average='micro')
-    f1_macro = f1_score(y_true, y_pred, average='macro')
+        y_pred = (y_pred > 0).astype(float)
+    f1_micro = f1_score(y_true, y_pred, average='micro', zero_division=0)
+    f1_macro = f1_score(y_true, y_pred, average='macro', zero_division=0)
     return f1_micro, f1_macro
 
 if __name__ == '__main__':

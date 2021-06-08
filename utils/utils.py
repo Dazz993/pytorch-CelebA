@@ -30,6 +30,8 @@ class AverageMeter(object):
 
 def save_checkpoint(save_dict, is_best, cfg, path='states'):
     path = os.path.join(path, cfg.network)
+    if not os.path.exists(path):
+        os.makedirs(path)
     torch.save(save_dict, os.path.join(path, f'checkpoint_{cfg.network}.tar'))
     if is_best:
         torch.save(save_dict, os.path.join(path, f'checkpoint_{cfg.network}_best.tar'))
