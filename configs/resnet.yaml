@@ -1,10 +1,11 @@
 network: 'resnet'
 multigpu: False
 num_classes: 40
-data_dir: 'data'
+data_dir: '/state/partition/zdzhu/'
 epochs: 90
-batch_size: 128
+batch_size: 64
 num_workers: 4
+learning_rate: 0.01
 adam_beta1: 0.9
 adam_beta2: 0.999
 adam_weight_decay: 0.01
