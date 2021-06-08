@@ -1,0 +1,13 @@
+network: 'resnet'
+multigpu: False
+num_classes: 40
+data_dir: 'data'
+epochs: 90
+batch_size: 128
+num_workers: 4
+adam_beta1: 0.9
+adam_beta2: 0.999
+adam_weight_decay: 0.01
+adam_eps: 0.000001
+milestones: [30, 60, 80]
+gamma: 0.2
