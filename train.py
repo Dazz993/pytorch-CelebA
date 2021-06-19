@@ -1,3 +1,4 @@
+import os
 import torch
 import yaml
 import argparse
@@ -7,6 +8,8 @@ from utils.dataset import get_dataset
 import torch.backends.cudnn as cudnn
 import models
 import numpy as np
+import pandas as pd
+import time
 from time import time as t
 from sklearn.metrics import f1_score
 from tqdm import tqdm
@@ -23,6 +26,12 @@ args = parser.parse_args()
 with open(args.cfg, 'r') as configure_file:
     cfg_dict = yaml.load(configure_file, Loader=yaml.FullLoader)
 cfg = ObjectDict(cfg_dict)
+print(cfg)
+
+# make some preparations
+path = os.path.join('states', cfg.network + time.strftime("_%Y_%m_%d_%H_%M_%S", time.localtime()))
+if not os.path.exists(path):
+    os.makedirs(path)
 
 cudnn.benchmark = True
 device = f'cuda:{args.gpu}' if torch.cuda.is_available() else 'cpu'
@@ -33,7 +42,21 @@ if cfg.network == 'resnet':
 elif cfg.network == 'alexnet':
     model = models.alexnet(num_classes=cfg.num_classes)
 elif cfg.network == 'vgg':
-    model = models.vgg16(num_classes=cfg.num_classes)
+    model = models.vgg16_bn(pretrained=False, num_classes=cfg.num_classes)
+elif cfg.network == 'densenet':
+    model = models.densenet121(pretrained=False, num_classes=cfg.num_classes)
+elif cfg.network == 'resnet18':
+    model = models.resnet18(num_classes=cfg.num_classes)
+elif cfg.network == 'resnet34':
+    model = models.resnet34(num_classes=cfg.num_classes)
+elif cfg.network == 'resnet101':
+    model = models.resnet101(num_classes=cfg.num_classes)
+elif cfg.network == 'resnet152':
+    model = models.resnet152(num_classes=cfg.num_classes)
+elif cfg.network == 'vit':
+    model = models.vit(num_classes=cfg.num_classes)
+elif cfg.network == 'se_resnet50':
+    model = models.se_resnet50(num_classes=cfg.num_classes)
 else:
     raise NotImplementedError
 
@@ -143,15 +166,18 @@ def validate(epoch):
         #       f'Loss {losses.val:.4f} ({losses.avg:.4f})\t'
         #       f'f1_score {f1_micro.val:.4f} {f1_macro.val:.4f}')
 
-    print(f'\n * Epoch: {epoch}, f1_score: {f1_micro.val:.4f}, {f1_macro.val:.4f}')
+    print(f'\n * Epoch: {epoch}, f1_score: {f1_micro.avg:.4f}, {f1_macro.avg:.4f}, val_loss: {losses.avg:.4f}')
 
     return losses.avg, f1_micro.avg, f1_macro.avg
 
 def train():
-    best_f1_macro = 0
+    results = []
+    best_f1_macro, best_val_loss = 0, float('inf')
     for epoch in range(cfg.epochs):
         train_loss, train_f1_micro, train_f1_macro = train_one_epoch(epoch)
         val_loss, val_f1_micro, val_f1_macro = validate(epoch)
+
+        results.append([epoch, train_loss.item(), train_f1_micro, train_f1_macro, val_loss.item(), val_f1_micro, val_f1_macro])
 
         lr_scheduler.step()
 
@@ -173,8 +199,15 @@ def train():
         is_best = False
         if val_f1_macro > best_f1_macro:
             best_f1_macro = val_f1_macro
+            best_val_loss = val_loss
             is_best = True
-        save_checkpoint(save_dict, is_best, cfg)
+        save_checkpoint(epoch, save_dict, is_best, cfg, path)
+
+    print("==> \nTraining End!")
+    for (epoch, train_loss, train_f1_micro, train_f1_macro, val_loss, val_f1_micro, val_f1_macro) in results:
+        print(epoch, train_loss, train_f1_micro, train_f1_macro, val_loss, val_f1_micro, val_f1_macro)
+    df = pd.DataFrame(results)
+    df.to_csv(os.path.join(path, cfg.network + '.csv'), index=False, header=['epoch', 'train_loss', 'train_f1_micro', 'train_f1_macro', 'val_loss', 'val_f1_micro', 'val_f1_macro'])
 
 
 def score(y_pred, y_true, rounded=False):

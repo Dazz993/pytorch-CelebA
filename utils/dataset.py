@@ -19,20 +19,20 @@ def get_CelebA_dataset(path):
                                      std=[0.309, 0.289, 0.288])
 
     train_dataset = datasets.CelebA(root=path, split='train', target_type='attr', transform=transforms.Compose([
-            transforms.Resize(224),
+            transforms.Resize((224, 224)),
             transforms.RandomHorizontalFlip(),
             transforms.ToTensor(),
             normalize
         ]), download=False)
 
     val_dataset = datasets.CelebA(root=path, split='valid', target_type='attr', transform=transforms.Compose([
-            transforms.Resize(224),
+            transforms.Resize((224, 224)),
             transforms.ToTensor(),
             normalize
         ]), download=False)
 
     test_dataset = datasets.CelebA(root=path, split='test', target_type='attr', transform=transforms.Compose([
-            transforms.Resize(224),
+            transforms.Resize((224, 224)),
             transforms.ToTensor(),
             normalize
         ]), download=False)
