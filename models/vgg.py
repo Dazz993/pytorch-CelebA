@@ -76,5 +76,27 @@ class VGG(nn.Module):
 
         return out
 
+
+def vgg11(num_classes=40):
+    return VGG('VGG11', num_classes=num_classes)
+
+def vgg13(num_classes=40):
+    return VGG('VGG13', num_classes=num_classes)
+
 def vgg16(num_classes=40):
     return VGG('VGG16', num_classes=num_classes)
+
+def vgg19(num_classes=40):
+    return VGG('VGG19', num_classes=num_classes)
+
+def vgg(layers, num_classes=40):
+    if layers == 11:
+        return vgg11(num_classes=num_classes)
+    elif layers == 13:
+        return vgg13(num_classes=num_classes)
+    elif layers == 16:
+        return vgg16(num_classes=num_classes)
+    elif layers == 19:
+        return vgg19(num_classes=num_classes)
+    else:
+        raise NotImplementedError

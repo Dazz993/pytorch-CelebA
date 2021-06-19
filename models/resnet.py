@@ -94,5 +94,31 @@ class ResNet(nn.Module):
 
         return out
 
+def resnet18(num_classes=40):
+    return ResNet(BasicBlock, layers=[2, 2, 2, 2], num_classes=num_classes)
+
+def resnet34(num_classes=40):
+    return ResNet(BasicBlock, layers=[3, 4, 6, 3], num_classes=num_classes)
+
 def resnet50(num_classes=40):
     return ResNet(Bottleneck, layers=[3, 4, 6, 3], num_classes=num_classes)
+
+def resnet101(num_classes=40):
+    return ResNet(Bottleneck, layers=[3, 4, 23, 3], num_classes=num_classes)
+
+def resnet152(num_classes=40):
+    return ResNet(Bottleneck, layers=[3, 8, 36, 3], num_classes=num_classes)
+
+def resnet(layers, num_classes=40):
+    if layers == 18:
+        return resnet18(num_classes=num_classes)
+    elif layers == 34:
+        return resnet34(num_classes=num_classes)
+    elif layers == 50:
+        return resnet50(num_classes=num_classes)
+    elif layers == 101:
+        return resnet101(num_classes=num_classes)
+    elif layers == 152:
+        return resnet152(num_classes=num_classes)
+    else:
+        raise NotImplementedError
