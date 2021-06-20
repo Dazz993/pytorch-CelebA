@@ -24,17 +24,31 @@ class VGG(nn.Module):
         assert vgg_type in vgg_architecture_cfg.keys()
         self.features = self._make_layers(vgg_architecture_cfg[vgg_type])
         self.avgpool = nn.AdaptiveAvgPool2d((7, 7))
-        self.classifier = nn.Sequential(
+        # self.classifier = nn.Sequential(
+        #     Rearrange('b c h w -> b (c h w)'),
+        #     nn.Linear(512 * 7 * 7, 4096),
+        #     nn.ReLU(inplace=True),
+        #     nn.Dropout(),
+        #     nn.Linear(4096, 4096),
+        #     nn.ReLU(inplace=True),
+        #     nn.Dropout(),
+        #     nn.Linear(4096, num_classes)
+        # )
+
+        self.linear1 = nn.Sequential(
             Rearrange('b c h w -> b (c h w)'),
             nn.Linear(512 * 7 * 7, 4096),
             nn.ReLU(inplace=True),
-            nn.Dropout(),
+            nn.Dropout()
+        )
+
+        self.linear2 = nn.Sequential(
             nn.Linear(4096, 4096),
             nn.ReLU(inplace=True),
-            nn.Dropout(),
-            nn.Linear(4096, num_classes)
-            # nn.Linear(512 * 7 * 7, num_classes)
+            nn.Dropout()
         )
+
+        self.linear3 = nn.Linear(4096, num_classes)
 
         if init_weights:
             self._initialize_weights()
@@ -73,9 +87,11 @@ class VGG(nn.Module):
     def forward(self, x):
         out = self.features(x)
         out = self.avgpool(out)
-        out = self.classifier(out)
+        out_linear1 = self.linear1(out)
+        out_linear2 = self.linear2(out_linear1)
+        out_linear3 = self.linear3(out_linear2)
 
-        return out
+        return out_linear3, out, out_linear1, out_linear2
 
 
 def vgg11(num_classes=40):
